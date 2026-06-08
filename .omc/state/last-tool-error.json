@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"wsl -d Ubuntu-24.04 python3 - << 'EOF'\\nimport numpy as np\\n\\n# Read waveform\\ndata = np.loadtxt('/home/whqkrel/rfic_project/results/il_pll_redesign_outp.txt')\\nt, v = data[:, 0], data[:, ...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<stdin>\", line 20, in <module>\n  File \"/usr/lib/python3.12/subprocess.py\", line 548, in run\n    with Popen(*popenargs, **kwargs) as process:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 1026, in __init__\n    self._execute_child(args, executable, preexec_fn, close_fds,\n  File \"/usr/lib/python3.12/subprocess.py\", line 1955, in _execute_child\n    raise child_exception_type(errno_num, err_msg, err_filenam...",
+  "timestamp": "2026-06-06T11:27:01.830Z",
+  "retry_count": 1
+}

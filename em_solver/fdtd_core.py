@@ -1,6 +1,46 @@
 """3D FDTD Core — Yee grid time-domain EM solver."""
 import numpy as np
 
+try:
+    import numba
+    _HAS_NUMBA = True
+
+    @numba.njit(cache=True, parallel=True)
+    def _h_kernel(Ex, Ey, Ez, Hx, Hy, Hz, DbX, DbY, DbZ, Nx, Ny, Nz):
+        for i in numba.prange(Nx - 1):
+            for j in range(Ny - 1):
+                for k in range(Nz - 1):
+                    Hx[i, j, k] -= (DbY[i, j, k] * (Ez[i, j+1, k] - Ez[i, j, k])
+                                    - DbZ[i, j, k] * (Ey[i, j, k+1] - Ey[i, j, k]))
+                    Hy[i, j, k] -= (DbZ[i, j, k] * (Ex[i, j, k+1] - Ex[i, j, k])
+                                    - DbX[i, j, k] * (Ez[i+1, j, k] - Ez[i, j, k]))
+                    Hz[i, j, k] -= (DbX[i, j, k] * (Ey[i+1, j, k] - Ey[i, j, k])
+                                    - DbY[i, j, k] * (Ex[i, j+1, k] - Ex[i, j, k]))
+
+    @numba.njit(cache=True, parallel=True)
+    def _e_kernel(Ex, Ey, Ez, Hx, Hy, Hz, Ca, CbX, CbY, CbZ, Nx, Ny, Nz):
+        for i in numba.prange(1, Nx):
+            for j in range(1, Ny - 1):
+                for k in range(1, Nz - 1):
+                    Ex[i, j, k] = (Ca[i, j, k] * Ex[i, j, k]
+                                   + CbY[i, j, k] * (Hz[i, j, k] - Hz[i, j-1, k])
+                                   - CbZ[i, j, k] * (Hy[i, j, k] - Hy[i, j, k-1]))
+        for i in numba.prange(1, Nx - 1):
+            for j in range(1, Ny):
+                for k in range(1, Nz - 1):
+                    Ey[i, j, k] = (Ca[i, j, k] * Ey[i, j, k]
+                                   + CbZ[i, j, k] * (Hx[i, j, k] - Hx[i, j, k-1])
+                                   - CbX[i, j, k] * (Hz[i, j, k] - Hz[i-1, j, k]))
+        for i in numba.prange(1, Nx - 1):
+            for j in range(1, Ny - 1):
+                for k in range(1, Nz):
+                    Ez[i, j, k] = (Ca[i, j, k] * Ez[i, j, k]
+                                   + CbX[i, j, k] * (Hy[i, j, k] - Hy[i-1, j, k])
+                                   - CbY[i, j, k] * (Hx[i, j, k] - Hx[i, j-1, k]))
+
+except ImportError:
+    _HAS_NUMBA = False
+
 
 class FDTD:
     def __init__(self, dx, dy, dz, Nx, Ny, Nz, dt=None):
@@ -56,6 +96,10 @@ class FDTD:
 
     def _update_E(self):
         Nx, Ny, Nz = self.Nx, self.Ny, self.Nz
+        if _HAS_NUMBA:
+            _e_kernel(self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz,
+                      self.Ca, self.CbX, self.CbY, self.CbZ, Nx, Ny, Nz)
+            return
         # Ex: dHz/dy - dHy/dz
         self.Ex[1:Nx, 1:Ny-1, 1:Nz-1] = (
             self.Ca[1:Nx, 1:Ny-1, 1:Nz-1] * self.Ex[1:Nx, 1:Ny-1, 1:Nz-1]
@@ -77,6 +121,10 @@ class FDTD:
 
     def _update_H(self):
         Nx, Ny, Nz = self.Nx, self.Ny, self.Nz
+        if _HAS_NUMBA:
+            _h_kernel(self.Ex, self.Ey, self.Ez, self.Hx, self.Hy, self.Hz,
+                      self.DbX, self.DbY, self.DbZ, Nx, Ny, Nz)
+            return
         # Hx: dEy/dz - dEz/dy
         self.Hx[0:Nx-1, 0:Ny-1, 0:Nz-1] -= (
             self.DbY[0:Nx-1, 0:Ny-1, 0:Nz-1] * (self.Ez[0:Nx-1, 1:Ny, 0:Nz-1] - self.Ez[0:Nx-1, 0:Ny-1, 0:Nz-1])
@@ -93,6 +141,12 @@ class FDTD:
             - self.DbY[0:Nx-1, 0:Ny-1, 0:Nz-1] * (self.Ex[0:Nx-1, 1:Ny, 0:Nz-1] - self.Ex[0:Nx-1, 0:Ny-1, 0:Nz-1])
         )
 
+    def _enforce_pec(self):
+        mask = self.sigma > 1e6
+        self.Ex[mask] = 0.0
+        self.Ey[mask] = 0.0
+        self.Ez[mask] = 0.0
+
     def step(self):
         self._update_H()
         if self._cpml:
@@ -100,6 +154,7 @@ class FDTD:
         self._update_E()
         if self._cpml:
             self._cpml.update_E_psi()
+        self._enforce_pec()
         for src in self.sources:
             src.apply(self)
         for prb in self.probes:

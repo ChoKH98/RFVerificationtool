@@ -27,7 +27,8 @@ and air region.
 
 ## Port And S11
 
-`GaussianPort` injects a soft Ey source along a feed column at the patch edge.
+`GaussianPort` injects a soft Ez gap-voltage source along a feed column between
+the ground and patch metallization.
 It records an analytic incident voltage and the total sampled voltage, then
 computes S11 with a direct DFT:
 
@@ -40,6 +41,30 @@ OpenEMS or measurement correlation.
 
 ## CPML Status
 
-The CPML class currently applies correction terms on y-normal faces and prepares
-the profile and memory arrays for x/z face extensions. Treat it as an absorber
-prototype until all six face corrections are implemented and validated.
+The CPML class applies correction terms on x-, y-, and z-normal faces. Treat it
+as an absorber prototype until it is validated against a plane-wave reflection
+test and correlated against openEMS/HFSS patch results.
+
+## Benchmark Correlation
+
+`em_solver.benchmark` compares normalized candidate solver outputs against HFSS
+and optionally openEMS. It supports:
+
+- layered phased-array antenna cases
+- X-band horn antenna cases
+- rectangular waveguide cutoff/propagation cases
+- PEC corner RCS scattering cases
+- WR-90 bend scattering cases
+
+`validation.py` contains the artifact loaders and strict metrics for
+S-parameters, near/medium complex fields, far-field beam properties, and RCS.
+
+`external_solvers.py` detects openEMS/AppCSXCAD/Octave/MATLAB/HFSS availability
+and can generate openEMS MATLAB/Octave runner scripts from installed tutorial
+templates. `optimization.py` converts failing benchmark metrics into concrete
+solver tuning recommendations such as mesh refinement, port normalization,
+NF2FF surface checks, and corner-edge refinement.
+
+`workflow.py` ties the bridge together: it creates/updates the Windows bridge,
+inspects artifact coverage per benchmark case, runs comparisons, and emits
+optimization recommendation files into each case's benchmark output directory.
